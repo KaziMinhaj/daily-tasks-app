@@ -1,0 +1,165 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  @@map("departments")
+}
+
+model User {
+  id              String           @id @default(cuid())
+  email           String           @unique
+  password        String
+  name            String
+  role            String           @default("MEMBER") // SUPERADMIN, ADMIN, MANAGER, MEMBER
+  designation     String?          // Officer, Accountant, HR Manager, Ops Lead, etc.
+  department      String           @default("Business Operations")
+  phone           String?
+  avatar          String?
+  isActive        Boolean          @default(true)
+
+  // Granular Permissions
+  canCreateTask   Boolean          @default(true)
+  canCompleteTask Boolean          @default(true)
+  canAssignTask   Boolean          @default(true)
+  canEditTask     Boolean          @default(true)
+  canDeleteTask   Boolean          @default(false)
+  canViewAllTasks Boolean          @default(false) // If false, user only sees tasks they created or are assigned to!
+  canManageUsers  Boolean          @default(false)
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  createdTasks    Task[]           @relation("TaskCreator")
+  assignments     TaskAssignment[]
+  comments        TaskComment[]
+  notifications   Notification[]
+  activityLogs    ActivityLog[]
+
+  @@map("users")
+}
+
+model Task {
+  id             String           @id @default(cuid())
+  taskCode       String?          @unique // e.g. TSK-101
+  title          String           // Task description in Bangla / English
+  description    String?          // Additional details
+  taskType       String           @default("ONE_TIME") // ONE_TIME, ONGOING, RECURRING
+  recurrenceRule String?          // Structured JSON or string summary
+  recurrenceFrequency String?     // DAILY, WEEKLY, MONTHLY, CUSTOM
+  recurrenceDays      String?     // Comma-separated or JSON e.g. "SATURDAY,MONDAY"
+  recurrenceDates     String?     // For Monthly (e.g. "15") or Custom slots JSON
+  recurrenceTime      String?     // "09:00" (HH:mm)
+  recurrenceTimezone  String?     @default("Asia/Dhaka")
+  lastGeneratedAt     DateTime?   // Timestamp when recurring instance was last created
+  parentTaskId        String?     // Points to parent template task if instantiated from recurring
+  status         String           @default("PENDING") // PENDING, IN_PROGRESS, DONE
+  isCompleted    Boolean          @default(false)
+  priority       Int?             // 1-10
+  priorityNote   String?          // Free text priority note
+  dueDate        DateTime?        // null for ONGOING (চলমান)
+  completedDate  DateTime?        // Timestamp when marked done
+  remarks        String?          // Remarks / progress notes
+  territory      String?          // Location / territory / branch
+  department     String           @default("Business Operations")
+  
+  dueReminderSentAt DateTime?     // Timestamp when approaching due date reminder email was sent
+  
+  assignedById   String
+  assignedBy     User             @relation("TaskCreator", fields: [assignedById], references: [id])
+  
+  assignments    TaskAssignment[]
+  comments       TaskComment[]
+  activityLogs   ActivityLog[]
+
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([status])
+  @@index([dueDate])
+  @@index([dueReminderSentAt])
+  @@index([taskType])
+  @@index([recurrenceFrequency])
+  @@index([parentTaskId])
+  @@index([department])
+  @@map("tasks")
+}
+
+model TaskAssignment {
+  id         String   @id @default(cuid())
+  taskId     String
+  userId     String
+  assignedAt DateTime @default(now())
+
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@map("task_assignments")
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  comment   String
+  createdAt DateTime @default(now())
+
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@map("task_comments")
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String?
+  action    String   // CREATED, STATUS_CHANGED, COMPLETED, REOPENED, UPDATED, COMMENT_ADDED, IMPORTED
+  details   String?  // JSON or descriptive text
+  createdAt DateTime @default(now())
+
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([taskId])
+  @@map("activity_logs")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      String   @default("INFO") // TASK_ASSIGNED, TASK_DUE_SOON, TASK_OVERDUE, COMMENT_ADDED, TASK_STATUS
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String
+  tokenHash String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@map("password_reset_tokens")
+}
